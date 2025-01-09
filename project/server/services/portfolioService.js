@@ -2,7 +2,7 @@ import db from '../db/index.js';
 import { getStoredPrice, fetchStockPrice } from './stockService.js';
 
 export async function getPositions() {
-  const holdings = db.prepare(`
+  const holdings = await db.all(`
     SELECT 
       symbol,
       SUM(CASE WHEN type = 'buy' THEN quantity ELSE -quantity END) as quantity,
@@ -10,7 +10,7 @@ export async function getPositions() {
     FROM transactions
     GROUP BY symbol
     HAVING quantity > 0
-  `).all();
+  `);
 
   const positions = await Promise.all(holdings.map(async (holding) => {
     let stockData;
@@ -19,7 +19,7 @@ export async function getPositions() {
       stockData = await fetchStockPrice(holding.symbol);
     } catch (error) {
       // Fall back to stored data
-      stockData = getStoredPrice(holding.symbol);
+      stockData = await getStoredPrice(holding.symbol);
       if (!stockData) {
         throw new Error(`No price data available for ${holding.symbol}`);
       }
@@ -50,7 +50,9 @@ export async function getPositions() {
   return positions;
 }
 
-export function addTransaction(transaction) {
-  const stmt = db.prepare('INSERT INTO transactions (symbol, quantity, price, type) VALUES (?, ?, ?, ?)');
-  return stmt.run(transaction.symbol, transaction.quantity, transaction.price, transaction.type);
+export async function addTransaction(transaction) {
+  return db.run(
+    'INSERT INTO transactions (symbol, quantity, price, type) VALUES (?, ?, ?, ?)',
+    [transaction.symbol, transaction.quantity, transaction.price, transaction.type]
+  );
 }

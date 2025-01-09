@@ -4,45 +4,42 @@ import db from '../db/index.js';
 
 export async function fetchStockPrice(symbol) {
   try {
-    const response = await axios.get(config.ALPHA_VANTAGE_URL, {
+    const response = await axios.get(`${config.FINNHUB_URL}/quote`, {
       params: {
-        function: 'GLOBAL_QUOTE',
         symbol,
-        apikey: config.API_KEY
+        token: config.API_KEY
       }
     });
 
-    const data = response.data['Global Quote'];
+    const data = response.data;
     if (!data) {
       throw new Error('No data available for symbol');
     }
 
     const price = {
       symbol,
-      last_price: parseFloat(data['05. price']),
-      previous_close: parseFloat(data['08. previous close']),
-      day_high: parseFloat(data['03. high']),
-      day_low: parseFloat(data['04. low']),
-      // Note: Using day high/low as year high/low since Alpha Vantage's free tier doesn't provide this
-      year_high: parseFloat(data['03. high']),
-      year_low: parseFloat(data['04. low'])
+      last_price: data.c,
+      previous_close: data.pc,
+      day_high: data.h,
+      day_low: data.l,
+      year_high: data.h, // Using day high as year high temporarily
+      year_low: data.l   // Using day low as year low temporarily
     };
 
     // Update stock prices in database
-    const stmt = db.prepare(`
-      INSERT OR REPLACE INTO stock_prices 
+    await db.run(
+      `INSERT OR REPLACE INTO stock_prices 
       (symbol, last_price, previous_close, day_high, day_low, year_high, year_low)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    stmt.run(
-      price.symbol,
-      price.last_price,
-      price.previous_close,
-      price.day_high,
-      price.day_low,
-      price.year_high,
-      price.year_low
+      VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        price.symbol,
+        price.last_price,
+        price.previous_close,
+        price.day_high,
+        price.day_low,
+        price.year_high,
+        price.year_low
+      ]
     );
 
     return price;
@@ -52,6 +49,6 @@ export async function fetchStockPrice(symbol) {
   }
 }
 
-export function getStoredPrice(symbol) {
-  return db.prepare('SELECT * FROM stock_prices WHERE symbol = ?').get(symbol);
+export async function getStoredPrice(symbol) {
+  return db.get('SELECT * FROM stock_prices WHERE symbol = ?', [symbol]);
 }
